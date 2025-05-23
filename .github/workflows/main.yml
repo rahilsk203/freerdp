@@ -40,8 +40,8 @@ jobs:
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-        # Install ngrok
-        Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+        # Install ngrok (use latest version from ngrok.com)
+        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
         Expand-Archive ngrok.zip -DestinationPath .
 
         # Debug: List extracted files to verify ngrok.exe location
@@ -68,3 +68,13 @@ jobs:
 
         # Start ngrok to expose RDP port
         Start-Process -FilePath $ngrokPath -ArgumentList "tcp 3389" -NoNewWindow
+
+        # Wait for ngrok to initialize and retrieve the public URL
+        Start-Sleep -Seconds 5
+        $ngrokUrl = (Invoke-WebRequest http://localhost:4040/api/tunnels).Content | ConvertFrom-Json | Select-Object -ExpandProperty tunnels | Where-Object { $_.proto -eq "tcp" } | Select-Object -ExpandProperty public_url
+        if ($ngrokUrl) {
+          Write-Output "RDP URL: $ngrokUrl"
+        } else {
+          Write-Error "Failed to retrieve ngrok URL"
+          exit 1
+        }
