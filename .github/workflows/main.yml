@@ -44,6 +44,18 @@ jobs:
         Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
         Expand-Archive ngrok.zip -DestinationPath .
 
+        # Debug: List extracted files to verify ngrok.exe location
+        Write-Output "Listing extracted files:"
+        Get-ChildItem -Path . -Recurse
+
+        # Check for ngrok.exe in current directory or ngrok subdirectory
+        $ngrokPath = if (Test-Path "ngrok.exe") { ".\ngrok.exe" } elseif (Test-Path "ngrok\ngrok.exe") { ".\ngrok\ngrok.exe" } else { $null }
+        if (-not $ngrokPath) {
+          Write-Error "ngrok.exe not found in expected locations"
+          exit 1
+        }
+        Write-Output "Using ngrok at: $ngrokPath"
+
         # Verify NGROK_AUTH_TOKEN is set
         if (-not $env:NGROK_AUTH_TOKEN) {
           Write-Error "NGROK_AUTH_TOKEN is not set. Please add it to GitHub Secrets."
@@ -51,8 +63,8 @@ jobs:
         }
 
         # Set ngrok authtoken
-        ./ngrok/ngrok.exe authtoken $env:NGROK_AUTH_TOKEN
+        & $ngrokPath authtoken $env:NGROK_AUTH_TOKEN
         if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set ngrok authtoken"; exit 1 }
 
         # Start ngrok to expose RDP port
-        Start-Process -FilePath "./ngrok/ngrok.exe" -ArgumentList "tcp 3389" -NoNewWindowv
+        Start-Process -FilePath $ngrokPath -ArgumentList "tcp 3389" -NoNewWindow
