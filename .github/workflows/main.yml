@@ -1,18 +1,58 @@
 name: Free Windows RDP
-on: [push]
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
-    - name: Setup RDP
+    - name: Install dependencies and enable RDP
+      shell: pwsh
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
       run: |
-        # Install dependencies and enable RDP
-        net user runneradmin MyPassword123! /add
-        net localgroup administrators runneradmin /add
-        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        # Check if user exists, create if not
+        $userExists = (net user runneradmin) -ne $null 2>&1
+        if (-not $userExists) {
+          net user runneradmin MyPassword123! /add
+          if ($LASTEXITCODE -ne 0) { Write-Error "Failed to create user"; exit 1 }
+        } else {
+          Write-Output "User runneradmin already exists"
+        }
+
+        # Check if user is already in administrators group
+        $isAdmin = (net localgroup administrators | Select-String "runneradmin") -ne $null
+        if (-not $isAdmin) {
+          net localgroup administrators runneradmin /add
+          if ($LASTEXITCODE -ne 0) { Write-Error "Failed to add user to administrators group"; exit 1 }
+        } else {
+          Write-Output "User runneradmin is already an administrator"
+        }
+
+        # Enable Remote Desktop
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-        # Start ngrok for external access
+
+        # Install ngrok
         Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
-        Expand-Archive ngrok.zip
+        Expand-Archive ngrok.zip -DestinationPath .
+
+        # Verify NGROK_AUTH_TOKEN is set
+        if (-not $env:NGROK_AUTH_TOKEN) {
+          Write-Error "NGROK_AUTH_TOKEN is not set. Please add it to GitHub Secrets."
+          exit 1
+        }
+
+        # Set ngrok authtoken
         ./ngrok/ngrok.exe authtoken $env:NGROK_AUTH_TOKEN
-        ./ngrok/ngrok.exe tcp 3389
+        if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set ngrok authtoken"; exit 1 }
+
+        # Start ngrok to expose RDP port
+        Start-Process -FilePath "./ngrok/ngrok.exe" -ArgumentList "tcp 3389" -NoNewWindowv
