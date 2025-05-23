@@ -1,0 +1,18 @@
+name: Free Windows RDP
+on: [push]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    - name: Setup RDP
+      run: |
+        # Install dependencies and enable RDP
+        net user runneradmin MyPassword123! /add
+        net localgroup administrators runneradmin /add
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        # Start ngrok for external access
+        Invoke-WebRequest https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip
+        ./ngrok/ngrok.exe authtoken $env:NGROK_AUTH_TOKEN
+        ./ngrok/ngrok.exe tcp 3389
